@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-
+extern bool isConnected;
 void inicio_wifi();
 /**
  * @brief Inicializa el Wi-Fi en modo Access Point (AP).
