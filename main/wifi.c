@@ -9,6 +9,7 @@
 #include "esp_netif.h"
 #include "esp_http_server.h"
 #include "esp_spiffs.h"
+#include "wifi.h"
 static const char *TAG = "wifi_station";
 httpd_handle_t server = NULL;
 const char *form_html =
@@ -25,7 +26,7 @@ void start_webserver_ap();
 void stop_webserver();
 void replace_dollar(char *str);
 void inicio_wifi();
-
+extern bool isConnected = false;
 void inicio_wifi(){
 	esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -40,6 +41,7 @@ void inicio_wifi(){
     ESP_LOGI(TAG, "ESP32 configurado como puerto serial y Wi-Fi inicializado");
     //ESP_ERROR_CHECK(init_spiffs());
     start_webserver_ap();
+    
 }
 
 void wifi_initialize(){
@@ -183,6 +185,7 @@ esp_err_t form_post_handler(httpd_req_t *req) {
 
         ESP_ERROR_CHECK(esp_wifi_start()); // Iniciar Wi-Fi en modo Station
         ESP_ERROR_CHECK(esp_wifi_connect()); // Intentar conectarse a la red
+        isConnected = true;
 
     }
 
