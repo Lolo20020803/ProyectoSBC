@@ -12,6 +12,8 @@
 #include "esp_netif.h"
 #include "esp_http_server.h"
 #include "esp_spiffs.h"
+#include <sys/stat.h> // Para struct stat y la función stat
+
 
 #ifdef __cplusplus
 extern "C" {

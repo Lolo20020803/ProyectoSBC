@@ -10,6 +10,8 @@
 #include "esp_http_server.h"
 #include "esp_spiffs.h"
 #include "wifi.h"
+#include <sys/stat.h> // Para struct stat y la función stat
+
 static const char *TAG = "wifi_station";
 httpd_handle_t server = NULL;
 const char *form_html =
@@ -26,21 +28,81 @@ void start_webserver_ap();
 void stop_webserver();
 void replace_dollar(char *str);
 void inicio_wifi();
+void startStation();
 extern bool isConnected = false;
+bool existe = false;
+const char *file_path = "/spiffs/credenciales.txt";
+char ssid[32];
+char password[32];
+
+void init_spiffs() {
+    esp_vfs_spiffs_conf_t conf = {
+        .base_path = "/spiffs",         // Ruta base para montar SPIFFS
+        .partition_label = NULL,       // Usa la partición etiquetada como "spiffs"
+        .max_files = 5,                // Número máximo de archivos abiertos simultáneamente
+        .format_if_mount_failed = true // Formatear si el montaje falla
+    };
+
+    esp_err_t ret = esp_vfs_spiffs_register(&conf);
+
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE("SPIFFS", "Fallo al montar el sistema de archivos");
+        } else if (ret == ESP_ERR_NOT_FOUND) {
+            ESP_LOGE("SPIFFS", "Partición no encontrada");
+        } else {
+            ESP_LOGE("SPIFFS", "Error al inicializar SPIFFS (%s)", esp_err_to_name(ret));
+        }
+        return;
+    }
+
+    size_t total = 0, used = 0;
+    ret = esp_spiffs_info(NULL, &total, &used);
+    if (ret != ESP_OK) {
+        ESP_LOGE("SPIFFS", "Error obteniendo información de SPIFFS (%s)", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI("SPIFFS", "Sistema de archivos montado. Total: %d, Usado: %d", total, used);
+    }
+
+    struct stat st;
+    if (stat(file_path, &st) == 0) {
+        ESP_LOGI(TAG, "El archivo '%s' existe.", file_path);
+        FILE *f = fopen(file_path, "r");
+        char line[128];
+        fgets(line, sizeof(line), f);
+        strcpy(ssid, line);
+        fgets(line, sizeof(line), f);
+        strcpy(password, line);
+        fclose(f);
+        ESP_LOGI(TAG, "SSID: %s, Password: %s", ssid, password);    
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        startStation();
+        existe = true;
+    } else {
+        ESP_LOGW(TAG, "El archivo '%s' no existe.", file_path);
+    }
+}
+
 void inicio_wifi(){
-	esp_err_t ret = nvs_flash_init();
+    esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
+    init_spiffs();
+	
     ESP_ERROR_CHECK(ret);
 
     // Inicializar el event loop
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     wifi_initialize();
-    ESP_LOGI(TAG, "ESP32 configurado como puerto serial y Wi-Fi inicializado");
-    //ESP_ERROR_CHECK(init_spiffs());
-    start_webserver_ap();
+    if (!existe) {
+        
+        ESP_LOGI(TAG, "ESP32 configurado como puerto serial y Wi-Fi inicializado");
+        //ESP_ERROR_CHECK(init_spiffs());
+        start_webserver_ap();
+    }
     
 }
 
@@ -140,27 +202,47 @@ esp_err_t form_post_handler(httpd_req_t *req) {
         password_start += 9;  // Mover el puntero después de "password="
 
         // Extraer SSID y contraseña
-        char ssid[32];
-        char password[32];
+        
 
         sscanf(ssid_start, "%31[^&]", ssid);
         sscanf(password_start, "%31s", password);
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        replace_dollar(password);
+        
+		FILE *f = fopen(file_path, "w");
+        if (f == NULL) {
+            ESP_LOGE(TAG, "Fallo al abrir el archivo para escritura");
+        } else {
+            // Escribir en diferentes líneas
+            char buffer[128];
+            sprintf(buffer, "%s\n", ssid); // Concatenar ssid con un salto de línea
+            fprintf(f, buffer);
+            sprintf(buffer, "%s\n", password); // Concatenar ssid con un salto de línea
+            fprintf(f, buffer);
+            fclose(f);
+            ESP_LOGI(TAG, "Archivo escrito correctamente");
+        }
 
-    // Crea un objeto de red
-        esp_netif_init();
-        esp_netif_create_default_wifi_sta();
-
-		replace_dollar(password);
         // Cambiar al modo Station
-        ESP_LOGI(TAG, "Cambiando a modo Station y conectando a la red: %s", password);
+        ESP_LOGI(TAG, "Cambiando a modo Station y conectando a la red: %s y password %s", password,ssid);
 
         // Detener el modo AP
-        ESP_ERROR_CHECK(esp_wifi_stop());
+        ESP_ERROR_CHECK(esp_wifi_stop());    
+        startStation();
+        
+        
+    }
 
-        // Configurar en modo Station
-        wifi_config_t wifi_config = {
+    return ESP_OK;
+}
+void startStation(){
+    ESP_ERROR_CHECK(esp_wifi_stop());
+
+    // Crea un objeto de red
+    esp_netif_init();
+    esp_netif_create_default_wifi_sta();
+    wifi_config_t wifi_config = {
             .sta = {
                 .ssid = "",
                 .password = "",
@@ -168,30 +250,23 @@ esp_err_t form_post_handler(httpd_req_t *req) {
         };
         
 
-        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA)); // Cambiar a modo Station
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA)); // Cambiar a modo Station
 
         // Asignar el SSID y la contraseña de forma segura
-        strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
-        wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0'; // Asegurar terminación con null
+    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+    wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0'; // Asegurar terminación con null
 
-        strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
-        wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0'; // Asegurar terminación con null
+    strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
+    wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0'; // Asegurar terminación con null
 
         // Luego puedes configurar el wifi con
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
+    ESP_ERROR_CHECK(esp_wifi_start()); // Iniciar Wi-Fi en modo Station
+    ESP_ERROR_CHECK(esp_wifi_connect()); // Intentar conectarse a la red
 
-
-
-        ESP_ERROR_CHECK(esp_wifi_start()); // Iniciar Wi-Fi en modo Station
-        ESP_ERROR_CHECK(esp_wifi_connect()); // Intentar conectarse a la red
-        isConnected = true;
-
-    }
-
-    return ESP_OK;
+    isConnected = true;
 }
-
 void replace_dollar(char *str) {
     char *ptr;
     while ((ptr = strstr(str, "%24")) != NULL) {
