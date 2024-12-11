@@ -2,6 +2,9 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -11,6 +14,9 @@
 #include "esp_spiffs.h"
 #include "wifi.h"
 #include <sys/stat.h> // Para struct stat y la función stat
+
+static EventGroupHandle_t wifi_event_group;
+const int CONNECTED_BIT = BIT0;  // Bit para indicar conexión exitosa
 
 static const char *TAG = "wifi_station";
 httpd_handle_t server = NULL;
@@ -34,6 +40,20 @@ bool existe = false;
 const char *file_path = "/spiffs/credenciales.txt";
 char ssid[32];
 char password[32];
+
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        ESP_LOGI(TAG, "Wi-Fi STA iniciado, conectando...");
+        esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGI(TAG, "Desconectado de la red Wi-Fi, intentando reconectar...");
+        esp_wifi_connect();
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
+        ESP_LOGI(TAG, "Dirección IP obtenida: " IPSTR, IP2STR(&event->ip_info.ip));
+        xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+    }
+}
 
 void init_spiffs() {
     esp_vfs_spiffs_conf_t conf = {
@@ -244,9 +264,13 @@ void remove_last_char(char *str) {
 }
 
 void startStation(){
-    
+        wifi_event_group = xEventGroupCreate();
+    if (wifi_event_group == NULL) {
+        ESP_LOGE(TAG, "Error al crear el Event Group");
+        return; // O maneja el error adecuadamente
+    }
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg)); // Inicializar WiFi
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg)); // InicialiStatzar WiFi
 
     ESP_ERROR_CHECK(esp_netif_init());
     
@@ -254,7 +278,8 @@ void startStation(){
     esp_netif_create_default_wifi_sta(); // Crear interfaz de red por defecto para WiFi STA
     
 
-
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
     wifi_config_t wifi_config = {
             .sta = {
                 .ssid = "",
@@ -279,9 +304,15 @@ void startStation(){
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
     ESP_ERROR_CHECK(esp_wifi_start()); // Iniciar Wi-Fi en modo Station
-    ESP_ERROR_CHECK(esp_wifi_connect()); // Intentar conectarse a la red
-
-    isConnected = true;
+    ESP_LOGI(TAG, "SSID: %s, Password: %s", ssid, password);
+     ESP_LOGI(TAG, "Esperando conexión...");
+    EventBits_t bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+    if (bits & CONNECTED_BIT    ) {
+        ESP_LOGI(TAG, "Conexión Wi-Fi establecida con éxito.");
+        isConnected = true;
+    } else {
+        ESP_LOGE(TAG, "Error inesperado en la conexión Wi-Fi.");
+    }
 }
 void replace_dollar(char *str) {
     char *ptr;

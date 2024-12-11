@@ -10,15 +10,26 @@
 #include "nvs_flash.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_http_server.h"
 #include "esp_spiffs.h"
+#include "cJSON.h"
+#include "lwip/ip4_addr.h"
 #include <sys/stat.h> // Para struct stat y la función stat
+
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
 
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+extern int contadorAforo;
 extern bool isConnected;
 void inicio_wifi();
 /**

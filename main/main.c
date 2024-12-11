@@ -1,4 +1,8 @@
 #include "wifi.h"
+
+
+//void write_credencials();
+
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
@@ -26,7 +30,7 @@ static void send_data(void *pvParameters) {
     while (1) {
 		 
         cJSON *root = cJSON_CreateObject();
-        cJSON_AddNumberToObject(root, "light_percentage", 20);
+        cJSON_AddNumberToObject(root, "contadorAforo", contadorAforo);
         cJSON_AddNumberToObject(root, "voltage", 40);
         char *post_data = cJSON_PrintUnformatted(root);
 
@@ -105,7 +109,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         break;
     }
 }
-static void mqtt_app_start(void){
+static void start_mqtt_send_thingsboard(void){
 	ESP_LOGI(TAG,"MQTT starting");
 	 esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = "mqtt://demo.thingsboard.io",
@@ -209,14 +213,9 @@ httpd_handle_t start_webserver(void)
 
 
 
-
-
-//void write_credencials();
-
 void app_main(void)
 {
-    
-
+    isConnected = false;
 	esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_level_set("mqtt_client", ESP_LOG_VERBOSE);
     esp_log_level_set("mqtt_example", ESP_LOG_VERBOSE);
@@ -225,18 +224,7 @@ void app_main(void)
     esp_log_level_set("transport", ESP_LOG_VERBOSE);
     esp_log_level_set("outbox", ESP_LOG_VERBOSE);
     inicio_wifi();
-    while (!isConnected) {
-		vTaskDelay( pdMS_TO_TICKS( 500 ) );
-	}
-    ESP_LOGI(TAG, "Conexión WiFi establecida. Iniciando servidor web...");
-    if (start_webserver() == NULL) {
-        ESP_LOGE(TAG, "Error al iniciar el servidor web!");
-        return;
-    }
-
-    ESP_LOGI(TAG, "Servidor web iniciado. Iniciando MQTT...");
-    mqtt_app_start();
-    ESP_LOGI(TAG, "MQTT iniciado.");
     
-    
+    start_webserver() ;
+    start_mqtt_send_thingsboard();
 }
