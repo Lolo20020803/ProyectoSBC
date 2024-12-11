@@ -22,7 +22,7 @@
 
 static const char *TAG = "HTTP_SERVER";
 int contadorAforo = 0;
-static const char *token = "ZVJw737nsOfpT5KYabPr";
+static const char *token = "BWmHVi7XYSP5onYzBcUK";
 esp_mqtt_client_handle_t client;
 bool connected = false;
 
