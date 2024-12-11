@@ -74,10 +74,6 @@ void init_spiffs() {
         fgets(line, sizeof(line), f);
         strcpy(password, line);
         fclose(f);
-        ESP_LOGI(TAG, "SSID: %s, Password: %s", ssid, password);    
-        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-        startStation();
         existe = true;
     } else {
         ESP_LOGW(TAG, "El archivo '%s' no existe.", file_path);
@@ -90,18 +86,22 @@ void inicio_wifi(){
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
+    ESP_ERROR_CHECK(ret);
+
     init_spiffs();
 	
-    ESP_ERROR_CHECK(ret);
+    
 
     // Inicializar el event loop
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    wifi_initialize();
+    
     if (!existe) {
-        
+        wifi_initialize();    
         ESP_LOGI(TAG, "ESP32 configurado como puerto serial y Wi-Fi inicializado");
         //ESP_ERROR_CHECK(init_spiffs());
         start_webserver_ap();
+    }else{
+        startStation();
     }
     
 }
@@ -160,7 +160,7 @@ void start_webserver_ap() {
 
 void stop_webserver() {
     httpd_stop(server);
-    ESP_LOGE(TAG,"Servidor en pausa");
+    ESP_LOGI(TAG,"Servidor en pausa");
 }
 
 // Manejar solicitudes GET
@@ -206,8 +206,6 @@ esp_err_t form_post_handler(httpd_req_t *req) {
 
         sscanf(ssid_start, "%31[^&]", ssid);
         sscanf(password_start, "%31s", password);
-        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         replace_dollar(password);
         
 		FILE *f = fopen(file_path, "w");
@@ -224,42 +222,60 @@ esp_err_t form_post_handler(httpd_req_t *req) {
             ESP_LOGI(TAG, "Archivo escrito correctamente");
         }
 
-        // Cambiar al modo Station
-        ESP_LOGI(TAG, "Cambiando a modo Station y conectando a la red: %s y password %s", password,ssid);
+        
 
-        // Detener el modo AP
-        ESP_ERROR_CHECK(esp_wifi_stop());    
+        ESP_ERROR_CHECK(esp_wifi_stop()); // Detener WiFi
+        ESP_ERROR_CHECK(esp_netif_deinit()); // Liberar la interfaz de red
+        
+        stop_webserver();    
         startStation();
         
-        
+    } else {
+        ESP_LOGE(TAG, "Datos del formulario incompletos");
     }
 
     return ESP_OK;
 }
-void startStation(){
-    ESP_ERROR_CHECK(esp_wifi_stop());
+void remove_last_char(char *str) {
+    size_t len = strlen(str);
+    if (len > 0) {
+        str[len - 1] = '\0';
+    }
+}
 
-    // Crea un objeto de red
-    esp_netif_init();
-    esp_netif_create_default_wifi_sta();
+void startStation(){
+    
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg)); // Inicializar WiFi
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    
+    
+    esp_netif_create_default_wifi_sta(); // Crear interfaz de red por defecto para WiFi STA
+    
+
+
     wifi_config_t wifi_config = {
             .sta = {
                 .ssid = "",
                 .password = "",
             },
         };
-        
+    remove_last_char(ssid);
+    remove_last_char(password);
 
+    ESP_LOGI(TAG, "Conectando a la red Wi-Fi...");
+    ESP_LOGI(TAG, "SSID: %s", ssid);
+    ESP_LOGI(TAG, "Password: %s", password);
+    
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA)); // Cambiar a modo Station
 
-        // Asignar el SSID y la contraseña de forma segura
     strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
     wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0'; // Asegurar terminación con null
 
     strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
-    wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0'; // Asegurar terminación con null
-
-        // Luego puedes configurar el wifi con
+    wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0'; // Asegurar terminación con null    
+    
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
     ESP_ERROR_CHECK(esp_wifi_start()); // Iniciar Wi-Fi en modo Station

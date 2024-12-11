@@ -215,6 +215,8 @@ httpd_handle_t start_webserver(void)
 
 void app_main(void)
 {
+    
+
 	esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_level_set("mqtt_client", ESP_LOG_VERBOSE);
     esp_log_level_set("mqtt_example", ESP_LOG_VERBOSE);
@@ -226,7 +228,15 @@ void app_main(void)
     while (!isConnected) {
 		vTaskDelay( pdMS_TO_TICKS( 500 ) );
 	}
-    start_webserver();
+    ESP_LOGI(TAG, "Conexión WiFi establecida. Iniciando servidor web...");
+    if (start_webserver() == NULL) {
+        ESP_LOGE(TAG, "Error al iniciar el servidor web!");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Servidor web iniciado. Iniciando MQTT...");
     mqtt_app_start();
+    ESP_LOGI(TAG, "MQTT iniciado.");
+    
     
 }
