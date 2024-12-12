@@ -2,7 +2,7 @@
 
 
 //void write_credencials();
-
+mosquitto_pub -d -q 1 -h demo.thingsboard.io -p 1883 -t v1/devices/me/telemetry -u "BWmHVi7XYSP5onYzBcUK" -m "{contadorAforo:25,nivelLuz}"
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
@@ -25,13 +25,15 @@ int contadorAforo = 0;
 static const char *token = "BWmHVi7XYSP5onYzBcUK";
 esp_mqtt_client_handle_t client;
 bool connected = false;
-
+float porcentajeLuz,porcentajeAire;
+floa
 static void send_data(void *pvParameters) {
     while (1) {
 		 
         cJSON *root = cJSON_CreateObject();
         cJSON_AddNumberToObject(root, "contadorAforo", contadorAforo);
-        cJSON_AddNumberToObject(root, "voltage", 40);
+        cJSON_AddNumberToObject(root, "porcentajeLuz", porcentajeLuz);
+        cJSON_AddNumberToObject(root, "porcentajeAire", porcentajeAire);
         char *post_data = cJSON_PrintUnformatted(root);
 
         int msg_id = esp_mqtt_client_publish(client, "v1/devices/me/telemetry", post_data, 0, 1, 0);
