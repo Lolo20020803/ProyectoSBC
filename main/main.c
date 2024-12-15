@@ -1,8 +1,8 @@
 #include "wifi.h"
-
+#include "adc_sensor.h"
 
 //void write_credencials();
-mosquitto_pub -d -q 1 -h demo.thingsboard.io -p 1883 -t v1/devices/me/telemetry -u "BWmHVi7XYSP5onYzBcUK" -m "{contadorAforo:25,nivelLuz}"
+
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
@@ -26,10 +26,12 @@ static const char *token = "BWmHVi7XYSP5onYzBcUK";
 esp_mqtt_client_handle_t client;
 bool connected = false;
 float porcentajeLuz,porcentajeAire;
-floa
+
 static void send_data(void *pvParameters) {
     while (1) {
 		 
+        porcentajeAire = print_mq135_data();
+        porcentajeLuz = print_light_percentage();
         cJSON *root = cJSON_CreateObject();
         cJSON_AddNumberToObject(root, "contadorAforo", contadorAforo);
         cJSON_AddNumberToObject(root, "porcentajeLuz", porcentajeLuz);
@@ -218,6 +220,7 @@ httpd_handle_t start_webserver(void)
 void app_main(void)
 {
     isConnected = false;
+    init_adc();
 	esp_log_level_set("*", ESP_LOG_INFO);
     esp_log_level_set("mqtt_client", ESP_LOG_VERBOSE);
     esp_log_level_set("mqtt_example", ESP_LOG_VERBOSE);
